@@ -1,0 +1,9 @@
+Package: com.example.fullclock
+Name: FullClock
+Version: 0.0.1
+Architecture: iphoneos-arm64
+Description: Status bar clock with seconds and full date
+Maintainer: you
+Author: you
+Section: Tweaks
+Depends: mobilesubstrate
