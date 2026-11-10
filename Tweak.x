@@ -5,9 +5,8 @@
 #define TIME_FORMAT @"h:mm:ss a"        // 6:14:23 PM
 #define DATE_FORMAT @"EEEE MMMM d y"    // Monday November 9 2026
 
-static NSHashTable *gViews;
+static NSHashTable *gLabels;
 static NSDateFormatter *gTimeFmt, *gDateFmt;
-static BOOL gBypass = NO;
 static const void *kKind = &kKind; // 1 = time label, 2 = date label
 
 static NSInteger classify(NSString *s) {
@@ -29,54 +28,42 @@ static NSString *textFor(NSInteger kind) {
     return kind == 1 ? [gTimeFmt stringFromDate:now] : [gDateFmt stringFromDate:now];
 }
 
-static NSInteger kindFor(UILabel *view, NSString *incoming) {
-    NSNumber *known = objc_getAssociatedObject(view, kKind);
-    if (known) return known.integerValue;
-    if ([NSStringFromClass([view class]) rangeOfString:@"StatusBar"].location == NSNotFound) return 0;
-    NSInteger kind = classify(incoming);
-    if (kind) {
-        objc_setAssociatedObject(view, kKind, @(kind), OBJC_ASSOCIATION_RETAIN_NONATOMIC);
-        [gViews addObject:view];
-    }
-    return kind;
-}
-
 %hook UILabel
 
-- (void)setText:(NSString *)text {
-    if (gBypass) { %orig; return; }
-    NSInteger kind = kindFor(self, text);
-    if (kind) { %orig(textFor(kind)); } else { %orig; }
-}
-
-- (void)setAttributedText:(NSAttributedString *)text {
-    if (gBypass) { %orig; return; }
-    NSInteger kind = kindFor(self, text.string);
-    if (kind && text) {
-        NSMutableAttributedString *m = [text mutableCopy];
-        [m.mutableString setString:textFor(kind)];
-        %orig(m);
-    } else {
-        %orig;
+- (void)didMoveToWindow {
+    %orig;
+    if (self.window &&
+        [NSStringFromClass([self class]) rangeOfString:@"StatusBar"].location != NSNotFound) {
+        [gLabels addObject:self];
     }
 }
 
 %end
 
 static void tick(void) {
-    for (UILabel *v in gViews.allObjects) {
-        NSInteger kind = [objc_getAssociatedObject(v, kKind) integerValue];
-        if (!kind) continue;
+    for (UILabel *v in gLabels.allObjects) {
+        NSNumber *known = objc_getAssociatedObject(v, kKind);
+        NSInteger kind = known ? known.integerValue : 0;
+        if (!kind) {
+            kind = classify(v.text);
+            if (!kind) continue;
+            objc_setAssociatedObject(v, kKind, @(kind), OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+        }
         NSString *t = textFor(kind);
         if ([v.text isEqualToString:t]) continue;
-        gBypass = YES;
-        v.text = t;
-        gBypass = NO;
+        NSAttributedString *a = v.attributedText;
+        if (a.length) {
+            NSMutableAttributedString *m = [a mutableCopy];
+            [m.mutableString setString:t];
+            v.attributedText = m;
+        } else {
+            v.text = t;
+        }
     }
 }
 
 %ctor {
-    gViews = [NSHashTable weakObjectsHashTable];
+    gLabels = [NSHashTable weakObjectsHashTable];
     gTimeFmt = [NSDateFormatter new];
     gTimeFmt.dateFormat = TIME_FORMAT;
     gDateFmt = [NSDateFormatter new];
