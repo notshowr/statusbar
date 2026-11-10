@@ -5,9 +5,6 @@
 #define TIME_FORMAT @"h:mm:ss a"        // 6:14:23 PM
 #define DATE_FORMAT @"EEEE MMMM d y"    // Monday November 9 2026
 
-@interface _UIStatusBarStringView : UILabel
-@end
-
 static NSHashTable *gViews;
 static NSDateFormatter *gTimeFmt, *gDateFmt;
 static BOOL gBypass = NO;
@@ -32,19 +29,19 @@ static NSString *textFor(NSInteger kind) {
     return kind == 1 ? [gTimeFmt stringFromDate:now] : [gDateFmt stringFromDate:now];
 }
 
-static NSInteger kindFor(id view, NSString *incoming) {
-    NSInteger kind = [objc_getAssociatedObject(view, kKind) integerValue];
-    if (!kind) {
-        kind = classify(incoming);
-        if (kind) {
-            objc_setAssociatedObject(view, kKind, @(kind), OBJC_ASSOCIATION_RETAIN_NONATOMIC);
-            [gViews addObject:view];
-        }
+static NSInteger kindFor(UILabel *view, NSString *incoming) {
+    NSNumber *known = objc_getAssociatedObject(view, kKind);
+    if (known) return known.integerValue;
+    if ([NSStringFromClass([view class]) rangeOfString:@"StatusBar"].location == NSNotFound) return 0;
+    NSInteger kind = classify(incoming);
+    if (kind) {
+        objc_setAssociatedObject(view, kKind, @(kind), OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+        [gViews addObject:view];
     }
     return kind;
 }
 
-%hook _UIStatusBarStringView
+%hook UILabel
 
 - (void)setText:(NSString *)text {
     if (gBypass) { %orig; return; }
@@ -67,7 +64,7 @@ static NSInteger kindFor(id view, NSString *incoming) {
 %end
 
 static void tick(void) {
-    for (_UIStatusBarStringView *v in gViews.allObjects) {
+    for (UILabel *v in gViews.allObjects) {
         NSInteger kind = [objc_getAssociatedObject(v, kKind) integerValue];
         if (!kind) continue;
         NSString *t = textFor(kind);
