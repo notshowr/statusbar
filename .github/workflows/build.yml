@@ -1,4 +1,4 @@
-: Build FullClock
+name: Build FullClock
 
 on:
   workflow_dispatch:
